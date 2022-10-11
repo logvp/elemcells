@@ -1,123 +1,24 @@
 extern crate clap;
 extern crate crossterm;
 extern crate rand;
-use clap::{ArgGroup, Parser};
+mod lib;
+
+use crate::lib::Game;
+use clap::{error::ErrorKind, ArgGroup, Parser};
 use crossterm::{cursor::MoveUp, ExecutableCommand};
-use rand::{thread_rng, Rng};
 use std::{
-    fmt::Display,
     io::{stdin, stdout},
-    num::{IntErrorKind, ParseIntError},
-    ops::{Add, Index, Rem, Sub},
+    num::IntErrorKind,
 };
-
-trait ModularArith<Rhs = Self> {
-    type Output;
-    fn add_mod(self, rhs: Rhs, modulo: Self) -> <Self as ModularArith<Rhs>>::Output;
-    fn sub_mod(self, rhs: Rhs, modulo: Self) -> <Self as ModularArith<Rhs>>::Output;
-    fn modulus(self, rhs: Rhs) -> <Self as ModularArith<Rhs>>::Output;
-}
-impl<T> ModularArith for T
-where
-    T: Rem<Self, Output = Self> + Add<Self, Output = Self> + Sub<Self, Output = Self> + Copy,
-{
-    type Output = Self;
-    fn add_mod(self, rhs: Self, modulo: Self) -> Self {
-        (self.modulus(modulo) + rhs.modulus(modulo)).modulus(modulo)
-    }
-    fn sub_mod(self, rhs: Self, modulo: Self) -> Self {
-        (self.modulus(modulo) + modulo - rhs.modulus(modulo)).modulus(modulo)
-    }
-    fn modulus(self, rhs: Self) -> Self {
-        ((self % rhs) + rhs) % rhs
-    }
-}
-/*
-impl ModularArith for usize {
-    type Output = Self;
-    fn add_mod(self, rhs: Self, modulo: Self) -> Self {
-        (self.rem_euclid(modulo) + rhs.rem_euclid(modulo)).rem_euclid(modulo)
-    }
-    fn sub_mod(self, rhs: Self, modulo: Self) -> Self {
-        (self.rem_euclid(modulo) - rhs.rem_euclid(modulo)).rem_euclid(modulo)
-    }
-    fn modulus(self, rhs: Self) -> Self {
-        self.rem_euclid(rhs)
-    }
-}
-*/
-
-struct Game {
-    state: Vec<bool>,
-    size: usize,
-    rule: u8,
-}
-impl Index<usize> for Game {
-    type Output = bool;
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.state[index]
-    }
-}
-impl Game {
-    fn new(rule: u8, width: usize) -> Game {
-        Game {
-            state: vec![false; width],
-            size: width,
-            rule,
-        }
-    }
-
-    fn randomize(&mut self) {
-        thread_rng().fill(&mut self.state[..]);
-    }
-
-    fn set_state(&mut self, state: &[bool]) {
-        if state.len() > self.size {
-            panic!(
-                "Given state is too large ({}) for game dimension: {}",
-                state.len(),
-                self.size
-            );
-        }
-        self.state = vec![false; self.size];
-        for (i, n) in state.into_iter().enumerate() {
-            self.state[i] = *n;
-        }
-    }
-
-    fn step_and_update(&mut self) {
-        self.state = self.step();
-    }
-
-    fn neighbors(&self, n: usize) -> u8 {
-        ((self.state[n.sub_mod(1, self.size)] as u8) << 2)
-            ^ ((self.state[n] as u8) << 1)
-            ^ (self.state[n.add_mod(1, self.size)] as u8)
-    }
-
-    fn step(&self) -> Vec<bool> {
-        let mut next_step = vec![false; self.size];
-
-        for i in 0..self.state.len() {
-            next_step[i] = (1 << self.neighbors(i)) & self.rule != 0
-        }
-
-        next_step
-    }
-}
-impl Display for Game {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for b in self.state.iter() {
-            write!(f, "{}", if *b { "X" } else { "." })?
-        }
-        Ok(())
-    }
-}
 
 #[derive(Parser, Debug)]
 #[command(group(
             ArgGroup::new("init")
                 .args(["random", "custom"]),
+        ))]
+#[command(group(
+            ArgGroup::new("chars")
+                .args(["display", "block"]),
         ))]
 struct Cli {
     rule: u8,
@@ -126,25 +27,48 @@ struct Cli {
     #[arg(short, long)]
     iterations: Option<usize>,
     #[arg(short, long)]
+    display: Option<String>,
+    #[arg(long)]
+    block: bool,
+    #[arg(short, long)]
     random: bool,
     custom: Option<String>,
 }
 
+const DEFAULT_CHARS: [char; 2] = ['X', '.'];
+const BLOCK_CHARS: [char; 2] = ['█', ' '];
 fn main() {
     let cli: Cli = Cli::parse();
-    println!("{:?}", cli);
-    let mut game = Game::new(cli.rule, cli.width);
+
+    let display = if cli.block {
+        BLOCK_CHARS
+    } else if let Some(disp) = cli.display {
+        if disp.len() != 2 {
+            clap::Error::raw(
+                ErrorKind::InvalidValue,
+                "Input to --display must be a string of two characters i.e. \"X.\" or \"█ \"\n",
+            )
+            .exit()
+        }
+        let mut c = disp.chars();
+        [c.next().unwrap(), c.next().unwrap()]
+    } else {
+        DEFAULT_CHARS
+    };
+    let mut game = Game::new(cli.rule, cli.width, display);
     if cli.random {
         game.randomize();
     } else if let Some(init) = cli.custom {
-        let mut vec = Vec::<bool>::with_capacity(game.size);
+        let mut vec = Vec::<bool>::with_capacity(game.width());
         for c in init.chars() {
             vec.push(match c {
                 ' ' | '.' | '0' => false,
-                'x' | 'X' | '1' => true,
-                _ => panic!(
-                    "Custom input must only be [' ', '.', '0'] (dead) or ['x', 'X', '1'] (alive)"
-                ),
+                'x' | 'X' | '1' | '█' => true,
+                _ => clap::Error::raw(
+                    ErrorKind::InvalidValue,
+                    "Custom input must only be [' ', '.', '0'] (dead) or ['x', 'X', '1'] (alive)\n",
+                )
+                .exit(),
             })
         }
         game.set_state(&vec);
