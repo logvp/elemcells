@@ -7,31 +7,60 @@ use crate::lib::Game;
 use clap::{error::ErrorKind, ArgGroup, Parser};
 use crossterm::{cursor::MoveUp, ExecutableCommand};
 use std::{
-    io::{stdin, stdout},
+    io::{stdin, stdout, Write},
     num::IntErrorKind,
 };
 
 #[derive(Parser, Debug)]
-#[command(group(
-            ArgGroup::new("init")
-                .args(["random", "custom"]),
-        ))]
-#[command(group(
-            ArgGroup::new("chars")
-                .args(["display", "block"]),
-        ))]
+#[command(
+    group(ArgGroup::new("init").args(["random", "custom", "middle"])),
+    group(ArgGroup::new("chars").args(["display", "block"])),
+    long_about = "Elementary Cellular Automata simulator. A RULE (8 bit number) is required for every simulation as it derives all of the rules of interactions between cells. \
+    The program will run in iteractive mode unless the -i argument is set. In interactive mode press enter to advance the simulation one stage, or enter a number to move that \
+    many simulation steps"
+)]
+
 struct Cli {
     rule: u8,
     #[arg(short, long, default_value_t = 100)]
     width: usize,
-    #[arg(short, long)]
+    #[arg(
+        short,
+        long,
+        visible_alias = "height",
+        help = "If specified simulation will show N many lines and then exit.\nIf unset, simulation will enter interactive mode"
+    )]
     iterations: Option<usize>,
-    #[arg(short, long)]
+    #[arg(
+        short,
+        long,
+        short_alias = 'c',
+        help = "A two character string that will be used to visualize the simulation"
+    )]
     display: Option<String>,
-    #[arg(long)]
-    block: bool,
-    #[arg(short, long)]
+    #[arg(
+        short,
+        long,
+        help = "Prints cells as solid colors",
+        name = "block",
+        short_alias = 'b',
+        alias = "block"
+    )]
+    solid: bool,
+    #[arg(
+        short,
+        long,
+        help = "Randomizes the initial condition"
+    )]
     random: bool,
+    #[arg(
+        long,
+        help = "Starts with one live cell in the center"
+    )]
+    middle: bool,
+    #[arg(
+        help = "A string representing the initial condition for the simulation"
+    )]
     custom: Option<String>,
 }
 
@@ -40,13 +69,13 @@ const BLOCK_CHARS: [char; 2] = ['█', ' '];
 fn main() {
     let cli: Cli = Cli::parse();
 
-    let display = if cli.block {
+    let display = if cli.solid {
         BLOCK_CHARS
     } else if let Some(disp) = cli.display {
         if disp.len() != 2 {
             clap::Error::raw(
-                ErrorKind::InvalidValue,
-                "Input to --display must be a string of two characters i.e. \"X.\" or \"█ \"\n",
+                    ErrorKind::InvalidValue,
+            "Input to --display must be a string of two characters i.e. \"X.\" or \"█ \"\n",
             )
             .exit()
         }
@@ -65,22 +94,28 @@ fn main() {
                 ' ' | '.' | '0' => false,
                 'x' | 'X' | '1' | '█' => true,
                 _ => clap::Error::raw(
-                    ErrorKind::InvalidValue,
-                    "Custom input must only be [' ', '.', '0'] (dead) or ['x', 'X', '1'] (alive)\n",
+                        ErrorKind::InvalidValue,
+                "Custom input must only be [' ', '.', '0'] (dead) or ['x', 'X', '1'] (alive)\n",
                 )
                 .exit(),
             })
         }
         game.set_state(&vec);
+    } else if cli.middle {
+        game.set_only(game.width() / 2);
     } else {
-        // default state is X......(...)
+        // default state is X(...)
         game.set_state(&[true]);
     }
-    if let Some(itt) = cli.iterations {
-        for _ in 0..itt {
-            println!("{}", game);
+    let mut print_steps = |n: usize| {
+        let mut stdout = stdout();
+        for _ in 0..n {
+            writeln!(stdout, "{}", game).unwrap();
             game.step_and_update();
         }
+    };
+    if let Some(n) = cli.iterations {
+        print_steps(n);
     } else {
         enum Control {
             Quit,
@@ -88,7 +123,6 @@ fn main() {
             Continue,
             Iterate(u32),
         }
-        let mut stdout = stdout();
         let stdin = stdin();
         let mut buf = String::new();
         let mut get_input = || -> Control {
@@ -121,21 +155,15 @@ fn main() {
                 },
             }
         };
-        let mut step = || {
-            println!("{}", game);
-            game.step_and_update();
-        };
-        step();
+        print_steps(1);
         loop {
             match get_input() {
                 Control::Continue => {
-                    stdout.execute(MoveUp(1)).unwrap();
-                    step();
+                    stdout().execute(MoveUp(1)).unwrap();
+                    print_steps(1);
                 }
                 Control::Iterate(n) => {
-                    for _ in 0..n {
-                        step();
-                    }
+                    print_steps(n as usize); // no real reason why it can't just parse usize. u32 is kinda arbitrary
                 }
                 Control::Nothing => {}
                 Control::Quit => return,

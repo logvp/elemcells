@@ -1,8 +1,6 @@
 use rand::{thread_rng, Rng};
 use std::{
     fmt::Display,
-    io::{stdin, stdout},
-    num::IntErrorKind,
     ops::{Add, Index, Rem, Sub},
 };
 
@@ -58,7 +56,7 @@ impl Game {
     pub fn set_state(&mut self, state: &[bool]) {
         if state.len() > self.size {
             panic!(
-                "Given state is too large ({}) for game dimension: {}",
+                "Given state is too large ({}) for game width: {}",
                 state.len(),
                 self.size
             );
@@ -67,6 +65,16 @@ impl Game {
         for (i, n) in state.into_iter().enumerate() {
             self.state[i] = *n;
         }
+    }
+
+    pub fn set_only(&mut self, n: usize) {
+        if n > self.size {
+            panic!(
+                    "Given index is too large ({}) for game width: {}", n, self.size
+            );
+        }
+        self.state = vec![false; self.size];
+        self.state[n] = true;
     }
 
     pub fn step_and_update(&mut self) {
