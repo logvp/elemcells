@@ -79,7 +79,7 @@ fn main() {
     let display = if cli.solid {
         BLOCK_CHARS
     } else if let Some(disp) = cli.display {
-        if disp.len() != 2 {
+        if disp.chars().count() != 2 {
             clap::Error::raw(
                     ErrorKind::InvalidValue,
             "Input to --display must be a string of two characters i.e. \"X.\" or \"█ \"\n",
