@@ -54,6 +54,7 @@ struct Cli {
     )]
     random: bool,
     #[arg(
+        short,
         long,
         help = "Starts with one live cell in the center"
     )]
@@ -62,6 +63,12 @@ struct Cli {
         help = "A string representing the initial condition for the simulation"
     )]
     custom: Option<String>,
+    #[arg(
+        short,
+        long,
+        help = "Treats the edges of the simulation as dead cells"
+    )]
+    no_wrap: bool,
 }
 
 const DEFAULT_CHARS: [char; 2] = ['X', '.'];
@@ -84,7 +91,7 @@ fn main() {
     } else {
         DEFAULT_CHARS
     };
-    let mut game = Game::new(cli.rule, cli.width, display);
+    let mut game = Game::new(cli.rule, cli.width, !cli.no_wrap, display);
     if cli.random {
         game.randomize();
     } else if let Some(init) = cli.custom {

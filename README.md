@@ -66,11 +66,12 @@ XXX.X.XX........................................................................
 X.XXXXXXX...........................................................................................
 XXX.....XX..........................................................................................
 ```
-`124` is the rule that governs this simulation. It determines each sequential generation using the previous generation as input. The `-i 10` tells it to print the first 10 iterations and then exit. Running the command without it `./elemcells 124` enters interactive mode. The command used to generate the Sierpiński Triangle above is `./elemcells 18 --width 70 --middle -i 32 -s`
+`124` is the rule that governs this simulation. It determines each sequential generation using the previous generation as input. The `-i 10` tells it to print the first 10 iterations and then exit. Running the command without it `./elemcells 124` enters interactive mode. The command used to generate the Sierpiński Triangle above is `./elemcells 18 --width 70 --height 32 --middle --solid`
 ## Interactive mode
 When a `-i` argument is not present, the similation will be interactive. Here you can press simply press enter to advance the simulation one step, or you can specify a number and the simulation will render that many steps. To exit the simulation and terminate the program enter `quit` or `q`.
 ## Command Line Arguments
 The rule is the only required argument. The only constraint on the order of arguments is that the rule must come before the custom state if present.
 Some commands are exclusive of each other.
-`./elemcells RULE [--width WIDTH] [--iterations NUM] [--display CHARACTERS | --solid] [--random | --middle | CUSTOM]`
+`./elemcells RULE [--width WIDTH] [--iterations(height) NUM] [--display CHARACTERS | --solid] [--random | --middle | CUSTOM] [--no-wrap]`
+All commands can be shortened to a single minus and the first letter of the primary name. Using the short forms, the command from above `./elemcells 18 --width 70 --height 32 --middle --solid` can be shortened to `./elemcells 18 -w70 -i32 -ms`
 Use `-h` or `--help` for more information.

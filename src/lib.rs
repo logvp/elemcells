@@ -1,7 +1,7 @@
 use rand::{thread_rng, Rng};
 use std::{
     fmt::Display,
-    ops::{Add, Index, Rem, Sub},
+    ops::{Add, Rem, Sub},
 };
 
 // Totally overkill but why not
@@ -31,20 +31,16 @@ pub struct Game {
     state: Vec<bool>,
     size: usize,
     rule: u8,
+    wrap: bool,
     disp: [char; 2],
 }
-impl Index<usize> for Game {
-    type Output = bool;
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.state[index]
-    }
-}
 impl Game {
-    pub fn new(rule: u8, width: usize, disp: [char; 2]) -> Game {
+    pub fn new(rule: u8, width: usize, wrap: bool, disp: [char; 2]) -> Game {
         Game {
             state: vec![false; width],
             size: width,
             rule,
+            wrap,
             disp,
         }
     }
@@ -85,17 +81,29 @@ impl Game {
         self.size
     }
 
-    fn neighbors(&self, n: usize) -> u8 {
+    fn neighbors_wrapping(&self, n: usize) -> u8 {
         ((self.state[n.sub_mod(1, self.size)] as u8) << 2)
             ^ ((self.state[n] as u8) << 1)
             ^ (self.state[n.add_mod(1, self.size)] as u8)
     }
 
+    fn neighbors_not_wrapping(&self, n: usize) -> u8 {
+        (if n > 0 {self.state[n - 1] as u8} else {0} << 2)
+            ^ ((self.state[n] as u8) << 1)
+            ^ (if n < self.size - 1 {self.state[n + 1] as u8} else {0})
+    }
+
     fn step(&self) -> Vec<bool> {
         let mut next_step = vec![false; self.size];
 
-        for i in 0..self.state.len() {
-            next_step[i] = (1 << self.neighbors(i)) & self.rule != 0
+        if self.wrap {
+            for i in 0..self.state.len() {
+                next_step[i] = (1 << self.neighbors_wrapping(i)) & self.rule != 0
+            }
+        } else {
+            for i in 0..self.state.len() {
+                next_step[i] = (1 << self.neighbors_not_wrapping(i)) & self.rule != 0
+            }
         }
 
         next_step
