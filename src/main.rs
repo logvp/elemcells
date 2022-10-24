@@ -7,6 +7,8 @@ use crate::lib::Game;
 use clap::{error::ErrorKind, ArgGroup, Parser};
 use crossterm::{cursor::MoveUp, ExecutableCommand};
 use std::{
+    thread,
+    time,
     io::{stdin, stdout, Write},
     num::IntErrorKind,
 };
@@ -69,6 +71,14 @@ struct Cli {
         help = "Treats the edges of the simulation as dead cells"
     )]
     no_wrap: bool,
+    #[arg(
+        short,
+        long,
+	default_missing_value = "50", // default_value -> default_value_t : default_missing_value -> ???
+        help = "Auto-scrolls the simulation with timestep of the specified milliseconds",
+        value_name = "MILLIS"
+    )]
+    auto: Option<u64>,
 }
 
 const DEFAULT_CHARS: [char; 2] = ['X', '.'];
@@ -121,59 +131,83 @@ fn main() {
             game.step_and_update();
         }
     };
-    if let Some(n) = cli.iterations {
-        print_steps(n);
-    } else {
-        enum Control {
-            Quit,
-            Nothing,
-            Continue,
-            Iterate(u32),
+    // TODO: This part might be able to be refactored and condensed
+    if let Some(millis) = cli.auto {
+        let wait = time::Duration::from_millis(millis);
+        let mut last = time::Instant::now();
+        // TODO: Exit more gracefully than CTRL-C
+        if let Some(lines) = cli.iterations {
+            let mut printed = 0;
+            while printed < lines {
+                let n = (last.elapsed().as_millis() / millis as u128).min((lines - printed) as u128) as usize;
+                last = time::Instant::now();
+                print_steps(n);
+                thread::sleep(wait);
+                printed += n;
+            }
+        } else {
+            loop {
+                let n = last.elapsed().as_millis() / millis as u128;
+                last = time::Instant::now();
+                print_steps(n as usize);
+                thread::sleep(wait);
+            }
         }
-        let stdin = stdin();
-        let mut buf = String::new();
-        let mut get_input = || -> Control {
-            buf.clear();
-            stdin
-                .read_line(&mut buf)
-                .expect("Failed to read line from stdin");
-            buf = buf.trim().to_string();
-            if buf.eq_ignore_ascii_case("q") || buf.eq_ignore_ascii_case("quit") {
-                return Control::Quit;
+    } else {
+        if let Some(n) = cli.iterations {
+            print_steps(n);
+        } else {
+            enum Control {
+                Quit,
+                Nothing,
+                Continue,
+                Iterate(u32),
             }
-            match buf.parse::<u32>() {
-                Ok(num) => Control::Iterate(num),
-                Err(error) => match *error.kind() {
-                    IntErrorKind::Empty => Control::Continue,
-                    IntErrorKind::InvalidDigit => {
-                        println!("Expected empty or number");
-                        Control::Nothing
-                    }
-                    IntErrorKind::NegOverflow => {
-                        println!("Unfortunately the simulation can't go backwards");
-                        Control::Nothing
-                    }
-                    IntErrorKind::PosOverflow => {
-                        println!("Too large");
-                        Control::Nothing
-                    }
-                    IntErrorKind::Zero => panic!("Unreachable"),
-                    _ => panic!("Unreachable"),
-                },
-            }
-        };
-        print_steps(1);
-        loop {
-            match get_input() {
-                Control::Continue => {
-                    stdout().execute(MoveUp(1)).unwrap();
-                    print_steps(1);
+            let stdin = stdin();
+            let mut buf = String::new();
+            let mut get_input = || -> Control {
+                buf.clear();
+                stdin
+                    .read_line(&mut buf)
+                    .expect("Failed to read line from stdin");
+                buf = buf.trim().to_string();
+                if buf.eq_ignore_ascii_case("q") || buf.eq_ignore_ascii_case("quit") {
+                    return Control::Quit;
                 }
-                Control::Iterate(n) => {
-                    print_steps(n as usize); // no real reason why it can't just parse usize. u32 is kinda arbitrary
+                match buf.parse::<u32>() {
+                    Ok(num) => Control::Iterate(num),
+                    Err(error) => match *error.kind() {
+                        IntErrorKind::Empty => Control::Continue,
+                        IntErrorKind::InvalidDigit => {
+                            println!("Expected empty or number");
+                            Control::Nothing
+                        }
+                        IntErrorKind::NegOverflow => {
+                            println!("Unfortunately the simulation can't go backwards");
+                            Control::Nothing
+                        }
+                        IntErrorKind::PosOverflow => {
+                            println!("Too large");
+                            Control::Nothing
+                        }
+                        IntErrorKind::Zero => panic!("Unreachable"),
+                        _ => panic!("Unreachable"),
+                    },
                 }
-                Control::Nothing => {}
-                Control::Quit => return,
+            };
+            print_steps(1);
+            loop {
+                match get_input() {
+                    Control::Continue => {
+                        stdout().execute(MoveUp(1)).unwrap();
+                        print_steps(1);
+                    }
+                    Control::Iterate(n) => {
+                        print_steps(n as usize); // no real reason why it can't just parse usize. u32 is kinda arbitrary
+                    }
+                    Control::Nothing => {}
+                    Control::Quit => return,
+                }
             }
         }
     }
